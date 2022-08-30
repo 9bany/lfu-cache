@@ -1,87 +1,78 @@
 package main
 
-import "fmt"
+import "time"
 
-type Node struct {
-	key   int
-	value int
-	prev  *Node
-	next  *Node
-}
-
-func NewNode(key, value int) *Node {
-	return &Node{
-		key:   key,
-		value: value,
-		prev:  nil,
-		next:  nil,
-	}
+type Cache struct {
+	key, value   int
+	lastUsedTime int64
+	freq         int
 }
 
 type LFUCache struct {
+	data     []*Cache
 	capacity int
-	values   map[int]*Node
-	head     *Node
-	tail     *Node
+	m        map[int]int
 }
 
 func Constructor(capacity int) LFUCache {
-
-	head := NewNode(-1, -1)
-	tail := NewNode(-1, -1)
-	head.next = tail
-	tail.prev = head
-
-	return LFUCache{
-		capacity: capacity,
-		head:     head,
-		tail:     tail,
-		values:   map[int]*Node{},
-	}
+	c := LFUCache{}
+	c.data = make([]*Cache, 0)
+	c.capacity = capacity
+	c.m = make(map[int]int)
+	return c
 }
 
-func (cache *LFUCache) Get(key int) int {
-	node := cache.values[key]
-
-	if node == nil {
-		return -1
+func (this *LFUCache) Get(key int) int {
+	value := -1
+	if v, ok := this.m[key]; ok && v != -1 {
+		value = this.data[v-1].value
+		this.data[v-1].freq = this.data[v-1].freq + 1
+		this.data[v-1].lastUsedTime = time.Now().UnixNano()
 	}
-
-	fmt.Println("get -> ", key, node.value)
-	node.prev.next = node.next
-	node.next.prev = node.prev
-
-	cache.moveToHead(node)
-
-	return node.value
+	return value
 }
 
-func (cache *LFUCache) Put(key int, value int) {
-	fmt.Println("put -> ", key, value)
-	node := cache.values[key]
-	if node != nil {
-		node.value = value
-		node.prev.next = node.next
-		node.next.prev = node.prev
-		cache.moveToHead(node)
+func (this *LFUCache) Put(key int, value int) {
+	c := Cache{
+		key:          key,
+		value:        value,
+		freq:         1,
+		lastUsedTime: time.Now().UnixNano(),
+	}
+	if this.capacity == 0 {
+		this.m[key] = -1
 		return
 	}
-
-	if len(cache.values) == cache.capacity {
-		fmt.Println("delete", cache.tail.prev.key)
-		delete(cache.values, cache.tail.prev.key)
-		cache.tail.prev = cache.tail.prev.prev
-		cache.tail.prev.next = cache.tail
+	if v, ok := this.m[key]; ok && v != -1 {
+		this.data[v-1].value = value
+		this.data[v-1].freq = this.data[v-1].freq + 1
+		this.data[v-1].lastUsedTime = time.Now().UnixNano()
+	} else if len(this.data) == this.capacity {
+		mini := 2147483647
+		minT := time.Now().UnixNano()
+		var index int
+		for i := 0; i < len(this.data); i++ {
+			if mini > this.data[i].freq {
+				mini = this.data[i].freq
+				minT = this.data[i].lastUsedTime
+				index = i
+			} else if mini == this.data[i].freq && minT > this.data[i].lastUsedTime {
+				index = i
+				minT = this.data[i].lastUsedTime
+			}
+		}
+		this.m[this.data[index].key] = -1
+		this.data[index] = &c
+		this.m[key] = index + 1
+	} else {
+		this.data = append(this.data, &c)
+		this.m[key] = len(this.data)
 	}
-
-	node = NewNode(key, value)
-	cache.values[key] = node
-	cache.moveToHead(node)
 }
 
-func (cache *LFUCache) moveToHead(node *Node) {
-	node.prev = cache.head
-	node.next = cache.head.next
-	node.next.prev = node
-	cache.head.next = node
-}
+/**
+ * Your LFUCache object will be instantiated and called as such:
+ * obj := Constructor(capacity);
+ * param_1 := obj.Get(key);
+ * obj.Put(key,value);
+ */
